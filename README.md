@@ -61,8 +61,6 @@ When downloading and running the `.exe` file, **Windows may display a security w
 
 ### 2. Running from Source (for Developers / Python Users)
 
-### 2. Running from Source (for Developers / Python Users)
-
 If you prefer to run the application directly from its Python source code:
 
 1.  **Prerequisites:**
