@@ -1,3 +1,14 @@
-# Ignoruj foldery build i dist (z PyInstallera)
+# User data files
+dps_units.json
+last_settings.json
+
+# Python bytecode
+__pycache__/
+*.pyc
+*.pyo
+
+# Build files
 build/
 dist/
+*.exe
+*.spec

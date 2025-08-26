@@ -87,17 +87,15 @@ class DPSCalculatorApp:
                 "crit_chance": 30.0,
                 "crit_dmg": 175.0
             },
-            # --- FUTURE PRESETS GO HERE ---
-            # "Warrior lvl 50": {
-            #     "dmg": 180.0,
-            #     "atk_speed": 0.06,
-            #     "crit_chance": 15.0,
-            #     "crit_dmg": 160.0
-            # },
+            "Beachcomber lvl 25": {
+                "dmg": 129.0,
+                "atk_speed": 0.04,
+                "crit_chance": 60.0,
+                "crit_dmg": 200.0
+            },
         }
 
         # Determine the correct base path for read/write files when bundled by PyInstaller
-        # This will point to the directory where the .exe is located when running as a frozen app.
         if getattr(sys, 'frozen', False):
             self.app_dir = os.path.dirname(sys.executable)
         else:
@@ -106,15 +104,40 @@ class DPSCalculatorApp:
         self.units_file = os.path.join(self.app_dir, "dps_units.json")
         self.load_units()
         
-        # --- CRITICAL CHANGE: create_widgets() must be called BEFORE functions that use the widgets ---
+        # --- CRITICAL: create_widgets() must be called BEFORE functions that use the widgets ---
         self.create_widgets()
+        self.load_last_settings()
+        
+        # Add window close handler
+        self.master.protocol("WM_DELETE_WINDOW", self.on_closing)
         
         self.ensure_default_units()
         self.save_units()
-        self.update_unit_combobox() # This line ensures combobox is populated on startup
+        self.update_unit_combobox()
         self.apply_theme()
         self.calculate_dps()
+        
+        # Keyboard shortcuts
+        self.master.bind('<Control-s>', lambda e: self.save_current_unit())
+        self.master.bind('<Control-l>', lambda e: self.load_selected_unit())
+        self.master.bind('<Control-d>', lambda e: self.delete_selected_unit())
+        self.master.bind('<Return>', lambda e: self.calculate_dps())
+        self.master.bind('<Escape>', lambda e: self.clear_fields())
 
+    def validate_numeric_input(self, value):
+        """Validate that input is a valid number"""
+        if value == "":
+            return True  # Allow empty field
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+
+    def on_closing(self):
+        """Handle window closing"""
+        self.save_last_settings()
+        self.master.destroy()
 
     def create_widgets(self):
         # --- Section 1: Base Unit Stats ---
@@ -124,7 +147,7 @@ class DPSCalculatorApp:
         self.dmg_var = tk.DoubleVar(value=145.0)
         self.atk_speed_var = tk.DoubleVar(value=0.04)
         self.crit_chance_var = tk.DoubleVar(value=30.0)
-        self.crit_dmg_var = tk.DoubleVar(value=175.0) # as percentage
+        self.crit_dmg_var = tk.DoubleVar(value=175.0)
 
         labels_texts = [
             ("Base DMG per hit:", self.dmg_var, "Base damage per hit."),
@@ -133,13 +156,20 @@ class DPSCalculatorApp:
             ("Crit Damage (%):", self.crit_dmg_var, "Critical damage multiplier in percentage (e.g., 175 for 1.75x base damage).")
         ]
 
+        # Register validation function
+        vcmd = (self.master.register(self.validate_numeric_input), '%P')
+
         self.stat_labels = []
         self.stat_entries = []
         for i, (text, var, tooltip_text) in enumerate(labels_texts):
             label = ttk.Label(self.stats_frame, text=text, font=self.label_font)
             label.grid(row=i, column=0, sticky="w", pady=2)
             self.stat_labels.append(label)
-            entry = ttk.Entry(self.stats_frame, textvariable=var, width=15, font=self.label_font, style="TEntry")
+            
+            # Apply validation to entries
+            entry = ttk.Entry(self.stats_frame, textvariable=var, width=15, 
+                            font=self.label_font, style="TEntry",
+                            validate='key', validatecommand=vcmd)
             entry.grid(row=i, column=1, sticky="ew", pady=2)
             self.stat_entries.append(entry)
             Tooltip(entry, tooltip_text)
@@ -149,32 +179,31 @@ class DPSCalculatorApp:
         self.clear_button = ttk.Button(self.stats_frame, text="Clear Fields", command=self.clear_fields, style="TButton")
         self.clear_button.grid(row=len(labels_texts)+1, column=0, columnspan=2, pady=5, sticky="ew")
 
-
         # --- Section 2: Unit Selector ---
         self.units_frame = tk.LabelFrame(self.master, text="Unit Selector", font=self.header_font, padx=10, pady=10)
         self.units_frame.grid(row=0, column=1, padx=10, pady=10, sticky="nsew")
 
-        ttk.Label(self.units_frame, text="Unit Name:", font=self.label_font).grid(row=0, column=0, sticky="w", pady=2)
-        self.unit_name_entry = ttk.Entry(self.units_frame, width=25, font=self.label_font, style="TEntry")
-        self.unit_name_entry.grid(row=0, column=1, sticky="ew", pady=2)
-        Tooltip(self.unit_name_entry, "Enter a name to save current stats as a new unit configuration.")
-
-        ttk.Label(self.units_frame, text="Select Unit:", font=self.label_font).grid(row=1, column=0, sticky="w", pady=2)
+        ttk.Label(self.units_frame, text="Select Unit:", font=self.label_font).grid(row=0, column=0, sticky="w", pady=2)
         self.unit_combobox = ttk.Combobox(self.units_frame, width=23, font=self.label_font, state="readonly", style="TCombobox")
-        self.unit_combobox.grid(row=1, column=1, sticky="ew", pady=2)
+        self.unit_combobox.grid(row=0, column=1, sticky="ew", pady=2)
         self.unit_combobox.bind("<<ComboboxSelected>>", self.on_unit_select)
 
-        self.load_unit_button = ttk.Button(self.units_frame, text="Load Unit", command=self.load_selected_unit, style="TButton")
-        self.load_unit_button.grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
-        self.save_unit_button = ttk.Button(self.units_frame, text="Save Current Unit", command=self.save_current_unit, style="TButton")
-        self.save_unit_button.grid(row=3, column=0, columnspan=2, pady=5, sticky="ew")
+        ttk.Label(self.units_frame, text="Unit Name:", font=self.label_font).grid(row=1, column=0, sticky="w", pady=2)
+        self.unit_name_entry = ttk.Entry(self.units_frame, width=25, font=self.label_font, style="TEntry")
+        self.unit_name_entry.grid(row=1, column=1, sticky="ew", pady=2)
+        Tooltip(self.unit_name_entry, "Enter a name to save current stats as a new unit configuration.")
+
+        #self.load_unit_button = ttk.Button(self.units_frame, text="Load Unit", command=self.load_selected_unit, style="TButton")
+        #self.load_unit_button.grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
+        self.save_unit_button =self.save_unit_button = ttk.Button(self.units_frame, text="Save Custom Unit", command=self.save_current_unit, style="TButton")
+        self.save_unit_button.grid(row=2, column=0, columnspan=2, pady=5, sticky="ew")
         self.delete_unit_button = ttk.Button(self.units_frame, text="Delete Selected Unit", command=self.delete_selected_unit, style="TButton")
-        self.delete_unit_button.grid(row=4, column=0, columnspan=2, pady=5, sticky="ew")
+        self.delete_unit_button.grid(row=3, column=0, columnspan=2, pady=5, sticky="ew")
 
         self.units_frame.grid_columnconfigure(1, weight=1)
         self.units_frame.grid_columnconfigure(0, weight=0)
 
-        # --- Section 3: DPS Results (now spanning across full bottom) ---
+        # --- Section 3: DPS Results ---
         self.results_frame = tk.LabelFrame(self.master, text="DPS Results", font=self.header_font, padx=10, pady=10)
         self.results_frame.grid(row=1, column=0, columnspan=2, padx=10, pady=10, sticky="nsew")
 
@@ -182,7 +211,7 @@ class DPSCalculatorApp:
                                             text="All DPS values in this tier list (including 'No Modification') are calculated considering the unit's Critical Chance and Critical Damage.",
                                             font=self.info_label_font,
                                             anchor="w",
-                                            wraplength=520) # Adjusted wraplength for 580px width
+                                            wraplength=520)
         self.results_info_label.pack(fill="x", padx=5, pady=(0,5))
 
         self.base_dps_header_container = tk.Frame(self.results_frame)
@@ -206,14 +235,12 @@ class DPSCalculatorApp:
         self.results_tree.heading("total_dps", text="Total DPS")
         self.results_tree.heading("percent_change", text="% Change vs Base")
 
-        # Adjusted column widths for the new window size (580px) as per screenshots
-        self.results_tree.column("tier", width=40, anchor="center") # Smaller
+        self.results_tree.column("tier", width=40, anchor="center")
         self.results_tree.column("modification", width=200, anchor="w")
         self.results_tree.column("total_dps", width=120, anchor="e")
-        self.results_tree.column("percent_change", width=160, anchor="e") # Wider
+        self.results_tree.column("percent_change", width=160, anchor="e")
 
         # --- Dynamic Scrollbars ---
-        # Create scrollbars but do not pack/grid them by default.
         vsb = ttk.Scrollbar(self.results_frame, orient="vertical", command=self.results_tree.yview)
         hsb = ttk.Scrollbar(self.results_frame, orient="horizontal", command=self.results_tree.xview)
         self.results_tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
@@ -225,7 +252,6 @@ class DPSCalculatorApp:
 
         self.results_tree.bind("<Configure>", self.check_scrollbars)
 
-
         self.master.grid_rowconfigure(0, weight=1)
         self.master.grid_rowconfigure(1, weight=2)
         self.master.grid_columnconfigure(0, weight=1)
@@ -236,36 +262,43 @@ class DPSCalculatorApp:
         self.results_frame.grid_rowconfigure(0, weight=1)
 
     def check_scrollbars(self, event=None):
+        """Dynamically show/hide scrollbars based on content"""
         # Vertical scrollbar
         num_items = len(self.results_tree.get_children())
-        row_height = int(self.style.lookup("Treeview", "rowheight")) # Get row height from style
-        if row_height == 0: row_height = 25 # Fallback if style not ready
-
+        
+        # Try to get row height from style, use default if not available
+        try:
+            row_height_str = self.style.lookup("Treeview", "rowheight")
+            if row_height_str:
+                row_height = int(row_height_str)
+            else:
+                row_height = 20  # Default row height
+        except (ValueError, TypeError):
+            row_height = 20  # Default row height if conversion fails
+        
         tree_visible_height = self.results_tree.winfo_height()
         
         # Add a small buffer to prevent scrollbar from flickering
-        buffer_rows = 1 # Allow for 1 extra row of content before showing scrollbar
-
-        if num_items * row_height > tree_visible_height + (buffer_rows * row_height): # Check if content overflows significantly
+        buffer_rows = 1
+        
+        if num_items * row_height > tree_visible_height + (buffer_rows * row_height):
             if not self.vsb_widget.winfo_ismapped():
                 self.vsb_widget.pack(side="right", fill="y")
         else:
             if self.vsb_widget.winfo_ismapped():
                 self.vsb_widget.pack_forget()
-
+        
         # Horizontal scrollbar
         total_column_width = sum([self.results_tree.column(col, 'width') for col in self.results_tree['columns']])
         treeview_width = self.results_tree.winfo_width()
-
-        # Add a small buffer to prevent scrollbar from appearing too early/disappearing too late
+        
         buffer_width = 10
-        if total_column_width > (treeview_width + buffer_width): # Check if content overflows significantly
+        if total_column_width > (treeview_width + buffer_width):
             if not self.hsb_widget.winfo_ismapped():
                 self.hsb_widget.pack(side="bottom", fill="x")
         else:
             if self.hsb_widget.winfo_ismapped():
                 self.hsb_widget.pack_forget()
-
 
     def apply_theme(self):
         theme_colors = self.themes[self.current_theme]
@@ -286,7 +319,6 @@ class DPSCalculatorApp:
         self.base_dps_with_crit_label.config(background=theme_colors["frame_bg"], foreground=theme_colors["fg_color"])
         self.base_dps_header_container.config(bg=theme_colors["frame_bg"])
 
-
         self.style.configure('TEntry',
                              fieldbackground=theme_colors["entry_bg"],
                              foreground=theme_colors["entry_fg"],
@@ -294,7 +326,6 @@ class DPSCalculatorApp:
         for entry in self.stat_entries:
             entry.update_idletasks()
         self.unit_name_entry.update_idletasks()
-
 
         self.style.configure('TButton',
                              background=theme_colors["button_bg"],
@@ -317,7 +348,6 @@ class DPSCalculatorApp:
         self.style.map('TCombobox', fieldbackground=[('readonly', theme_colors["entry_bg"])])
         self.style.map('TCombobox', selectbackground=[('readonly', theme_colors["tree_selected_bg"])])
         self.style.map('TCombobox', background=[('readonly', theme_colors["button_bg"])])
-
 
         self.style.configure("Treeview",
                              background=theme_colors["tree_bg"],
@@ -342,7 +372,6 @@ class DPSCalculatorApp:
 
         self.calculate_dps()
 
-
     def clear_fields(self):
         self.dmg_var.set(0.0)
         self.atk_speed_var.set(0.0)
@@ -353,14 +382,61 @@ class DPSCalculatorApp:
         self.results_tree.delete(*self.results_tree.get_children())
 
     def load_units(self):
+        """Load units from JSON file with better error handling"""
         if os.path.exists(self.units_file):
-            with open(self.units_file, "r") as f:
+            try:
+                with open(self.units_file, "r", encoding='utf-8') as f:
+                    content = f.read()
+                    if content.strip():  # Check if file is not empty
+                        self.units = json.loads(content)
+                    else:
+                        self.units = {}
+            except (json.JSONDecodeError, IOError) as e:
+                messagebox.showwarning("Load Warning", 
+                                     f"Could not load saved units. Starting fresh.\nError: {e}")
+                self.units = {}
+                # Create backup of corrupted file
                 try:
-                    self.units = json.load(f)
-                except json.JSONDecodeError: # Handle empty or corrupt JSON
-                    self.units = {}
+                    import shutil
+                    backup_path = self.units_file + ".backup"
+                    shutil.copy2(self.units_file, backup_path)
+                except:
+                    pass
         else:
             self.units = {}
+
+    def save_last_settings(self):
+        """Save current settings for next app launch"""
+        settings = {
+            "last_dmg": self.dmg_var.get(),
+            "last_atk_speed": self.atk_speed_var.get(),
+            "last_crit_chance": self.crit_chance_var.get(),
+            "last_crit_dmg": self.crit_dmg_var.get(),
+            "last_selected_unit": self.unit_combobox.get() if hasattr(self, 'unit_combobox') else ""
+        }
+        settings_file = os.path.join(self.app_dir, "last_settings.json")
+        try:
+            with open(settings_file, "w", encoding='utf-8') as f:
+                json.dump(settings, f)
+        except:
+            pass  # Silently fail if can't save settings
+
+    def load_last_settings(self):
+        """Load last used settings"""
+        settings_file = os.path.join(self.app_dir, "last_settings.json")
+        if os.path.exists(settings_file):
+            try:
+                with open(settings_file, "r", encoding='utf-8') as f:
+                    settings = json.load(f)
+                    self.dmg_var.set(settings.get("last_dmg", 145.0))
+                    self.atk_speed_var.set(settings.get("last_atk_speed", 0.04))
+                    self.crit_chance_var.set(settings.get("last_crit_chance", 30.0))
+                    self.crit_dmg_var.set(settings.get("last_crit_dmg", 175.0))
+                    if hasattr(self, 'unit_combobox') and settings.get("last_selected_unit"):
+                        if settings["last_selected_unit"] in self.units:
+                            self.unit_combobox.set(settings["last_selected_unit"])
+            except:
+                pass  # Use defaults if can't load
 
     def save_units(self):
         with open(self.units_file, "w") as f:
@@ -374,13 +450,12 @@ class DPSCalculatorApp:
                 "crit_chance": 30.0,
                 "crit_dmg": 175.0
             },
-            # --- FUTURE PRESETS GO HERE ---
-            # "Warrior lvl 50": {
-            #     "dmg": 180.0,
-            #     "atk_speed": 0.06,
-            #     "crit_chance": 15.0,
-            #     "crit_dmg": 160.0
-            # },
+            "Beachcomber lvl 25": {
+                "dmg": 129.0,
+                "atk_speed": 0.04,
+                "crit_chance": 60.0,
+                "crit_dmg": 200.0
+            },
         }
 
         changes_made = False
@@ -392,7 +467,6 @@ class DPSCalculatorApp:
         if changes_made:
             self.save_units()
             self.update_unit_combobox()
-            
 
     def update_unit_combobox(self):
         self.unit_combobox['values'] = list(self.units.keys())
@@ -405,7 +479,7 @@ class DPSCalculatorApp:
                 self.unit_combobox.set("")
 
     def on_unit_select(self, event):
-        pass
+        self.load_selected_unit()
 
     def load_selected_unit(self):
         unit_name = self.unit_combobox.get()
@@ -435,14 +509,17 @@ class DPSCalculatorApp:
             self.units[unit_name] = current_stats
             self.save_units()
             self.update_unit_combobox()
-            self.unit_name_entry.delete(0, tk.END)
+            self.unit_name_entry.delete(0, tk.END)          
         except Exception as e:
             messagebox.showerror("Save Error", f"Failed to save unit: {e}")
 
     def delete_selected_unit(self):
         unit_name = self.unit_combobox.get()
-        if unit_name == "Medusa lvl 25":
-            messagebox.showwarning("Warning", "The 'Medusa lvl 25' unit cannot be deleted.")
+        
+        # List of protected default units
+        protected_units = ["Medusa lvl 25", "Beachcomber lvl 25"]
+        if unit_name in protected_units:
+            messagebox.showwarning("Warning", f"The default unit '{unit_name}' cannot be deleted.")
             return
 
         if unit_name and unit_name in self.units:
@@ -450,11 +527,9 @@ class DPSCalculatorApp:
                 del self.units[unit_name]
                 self.save_units()
                 self.update_unit_combobox()
-                self.clear_fields()
-                messagebox.showinfo("Unit Deleted", f"Unit '{unit_name}' has been deleted.")
+                self.clear_fields()   
         else:
             messagebox.showerror("Error", "Please select a unit to delete.")
-
 
     def calculate_dps(self):
         try:
@@ -512,17 +587,25 @@ class DPSCalculatorApp:
             self.results_tree.delete(*self.results_tree.get_children())
 
             tiers = ["S", "A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M", "N", "O"]
-            
+
+            current_tier_index = 0
+            previous_dps = None
+
             for i, res in enumerate(results_sorted):
                 mod_name = res["name"]
                 dps = res["dps"]
-                
+    
                 if dps_base_with_crit == 0:
                     percentage_change = 0.0
                 else:
                     percentage_change = ((dps - dps_base_with_crit) / dps_base_with_crit) * 100
-                
-                tier_to_display = tiers[i] if i < len(tiers) else "-"
+    
+                # Check if DPS is different from previous result
+                if previous_dps is not None and abs(dps - previous_dps) > 0.01:  # 0.01 tolerance for floating point comparison
+                    current_tier_index += 1  # Move to next tier only when DPS changes
+    
+                tier_to_display = tiers[current_tier_index] if current_tier_index < len(tiers) else "-"
+                previous_dps = dps
                 
                 tag = "evenrow" if i % 2 == 0 else "oddrow"
                 self.results_tree.insert("", "end", iid=i, tags=(tag,), values=(
@@ -533,7 +616,6 @@ class DPSCalculatorApp:
                 ))
             
             self.master.after(100, self.check_scrollbars)
-
 
         except ValueError as e:
             messagebox.showerror("Data Input Error", str(e))
