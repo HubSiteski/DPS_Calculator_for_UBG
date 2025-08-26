@@ -30,6 +30,37 @@ For Windows users, the easiest way to use the application is by downloading the 
 2.  Download the latest `DPS_Calculator.exe` file from the assets of the newest release.
 3.  Run the executable directly. No installation or Python setup is required.
 
+### Windows Security Warning
+
+When downloading and running the `.exe` file, **Windows may display a security warning** such as:
+- "Microsoft Defender SmartScreen prevented an unrecognized app from starting"
+- "Unknown publisher" 
+- "This app might harm your device"
+
+**This is completely normal for new applications.** The warning appears because:
+- The application is not digitally signed (which costs $400+ per year for independent developers)
+- Windows doesn't "recognize" the application yet
+- **The application IS safe to use**
+
+#### How to run the application:
+
+1. **If you see a SmartScreen warning:**
+   - Click **"More info"** in the warning dialog
+   - Click **"Run anyway"** at the bottom
+   - The application will start normally
+
+2. **If your antivirus blocks the file:**
+   - Temporarily disable real-time protection
+   - Run the application
+   - Re-enable protection afterward
+   - Or add the file to your antivirus whitelist
+
+3. **Alternative:** You can always run from source code (see section below) if you prefer
+
+**Note:** This warning may become less frequent over time as more users download and run the application, helping Windows build trust in the software.
+
+### 2. Running from Source (for Developers / Python Users)
+
 ### 2. Running from Source (for Developers / Python Users)
 
 If you prefer to run the application directly from its Python source code:
